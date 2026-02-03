@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import AuthFetch from "../../services/AuthFetch";
 import PostCard from "../feed/PostCard";
-
 import "../../css/NewsFeed.css";
 
 const ensureArrays = (p) => {
@@ -27,7 +26,7 @@ const MyPosts = () => {
     if (!token) navigate("/home", { replace: true });
   }, [token, navigate]);
 
-  const loadMe = async () => {
+  const loadMe = useCallback(async () => {
     if (!token) {
       setIsAdmin(false);
       return;
@@ -40,9 +39,9 @@ const MyPosts = () => {
     } catch {
       setIsAdmin(false);
     }
-  };
+  }, [token]);
 
-  const loadMyPosts = async () => {
+  const loadMyPosts = useCallback(async () => {
     setLoading(true);
     try {
       const res = await AuthFetch("/my-posts");
@@ -56,12 +55,12 @@ const MyPosts = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadMe();
     loadMyPosts();
-  }, []);
+  }, [loadMe, loadMyPosts]);
 
   const removePostLocal = (postId) => {
     setPosts((prev) => prev.filter((p) => String(p._id) !== String(postId)));
@@ -75,7 +74,11 @@ const MyPosts = () => {
         </div>
 
         <div className="my-posts-actions">
-          <button className="btn btn--ghost" type="button" onClick={() => navigate("/create-post")}>
+          <button
+            className="btn btn--ghost"
+            type="button"
+            onClick={() => navigate("/create-post")}
+          >
             Create Post
           </button>
         </div>
@@ -87,7 +90,12 @@ const MyPosts = () => {
         ) : (
           <div className="feed-list">
             {posts.map((p) => (
-              <PostCard key={p._id} post={p} isAdmin={isAdmin} onDeleteLocal={removePostLocal} />
+              <PostCard
+                key={p._id}
+                post={p}
+                isAdmin={isAdmin}
+                onDeleteLocal={removePostLocal}
+              />
             ))}
           </div>
         )}
@@ -97,4 +105,3 @@ const MyPosts = () => {
 };
 
 export default MyPosts;
-

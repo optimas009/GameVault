@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AuthFetch from "../../services/AuthFetch";
 import CommentRow from "./CommentRow";
-
 
 const CommentsPanel = ({
   postId,
@@ -10,7 +9,7 @@ const CommentsPanel = ({
   isAdmin,
   onRequireLogin,
   onCommentsCountUpdate,
-  openTick, 
+  openTick,
 }) => {
   const [comments, setComments] = useState([]);
   const [loadingComments, setLoadingComments] = useState(false);
@@ -19,18 +18,19 @@ const CommentsPanel = ({
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState("");
 
-  const loadComments = async () => {
+  const loadComments = useCallback(async () => {
+    if (!postId) return;
+
     setLoadingComments(true);
     try {
       const res = await AuthFetch(`/posts/${postId}/comments`, {
-        cache: "no-store", 
+        cache: "no-store",
       });
       const data = await res.json().catch(() => ({}));
 
       const list = Array.isArray(data.comments) ? data.comments : [];
       setComments(list);
 
-      // sync counter from backend GET response
       if (typeof data.commentsCount !== "undefined") {
         onCommentsCountUpdate?.(data.commentsCount);
       }
@@ -39,13 +39,11 @@ const CommentsPanel = ({
     } finally {
       setLoadingComments(false);
     }
-  };
+  }, [postId, onCommentsCountUpdate]);
 
-  // refetch when opening (openTick changes) and when post changes
   useEffect(() => {
     loadComments();
-    
-  }, [postId, openTick]);
+  }, [loadComments, openTick]);
 
   const addComment = async () => {
     if (!token) return onRequireLogin?.();
@@ -70,7 +68,6 @@ const CommentsPanel = ({
       setCText("");
       setComments((prev) => [data.comment, ...prev]);
 
-      
       if (typeof data.commentsCount !== "undefined") {
         onCommentsCountUpdate?.(data.commentsCount);
       }
@@ -88,7 +85,9 @@ const CommentsPanel = ({
 
   const updateLocal = (commentId, updatedComment) => {
     setComments((prev) =>
-      prev.map((c) => (String(c._id) === String(commentId) ? { ...c, ...updatedComment } : c))
+      prev.map((c) =>
+        String(c._id) === String(commentId) ? { ...c, ...updatedComment } : c
+      )
     );
   };
 
@@ -123,7 +122,12 @@ const CommentsPanel = ({
           onChange={(e) => setCText(e.target.value)}
           disabled={sending}
         />
-        <button className="btn btn--primary btn--sm" type="button" onClick={addComment} disabled={sending}>
+        <button
+          className="btn btn--primary btn--sm"
+          type="button"
+          onClick={addComment}
+          disabled={sending}
+        >
           {sending ? "..." : "Send"}
         </button>
       </div>

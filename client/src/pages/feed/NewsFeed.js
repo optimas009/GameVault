@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import AuthFetch from "../../services/AuthFetch";
-import PostCard from "./PostCard"
-
+import PostCard from "./PostCard";
 import "../../css/NewsFeed.css";
 
 const ensureArrays = (p) => {
@@ -23,7 +22,7 @@ const NewsFeed = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
 
-  const loadMe = async () => {
+  const loadMe = useCallback(async () => {
     if (!token) {
       setIsAdmin(false);
       return;
@@ -36,14 +35,13 @@ const NewsFeed = () => {
     } catch {
       setIsAdmin(false);
     }
-  };
+  }, [token]);
 
-  const loadFeed = async () => {
+  const loadFeed = useCallback(async () => {
     setLoading(true);
     try {
       const res = await AuthFetch("/feed", { skip401Handler: true });
       const data = await res.json().catch(() => ({}));
-
       const arr = Array.isArray(data.posts) ? data.posts : [];
       setPosts(arr.map(ensureArrays));
     } catch {
@@ -51,13 +49,12 @@ const NewsFeed = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadMe();
     loadFeed();
-    
-  }, []);
+  }, [loadMe, loadFeed]);
 
   const handleTopRight = () => {
     if (token) navigate("/create-post");
@@ -74,7 +71,11 @@ const NewsFeed = () => {
         <div className="feed-topbar">
           <h1 className="feed-title">NEWSFEED</h1>
 
-          <button className="btn btn--ghost btn--topright" type="button" onClick={handleTopRight}>
+          <button
+            className="btn btn--ghost btn--topright"
+            type="button"
+            onClick={handleTopRight}
+          >
             {token ? "Post something" : "Login to post"}
           </button>
         </div>
@@ -86,7 +87,12 @@ const NewsFeed = () => {
         ) : (
           <div className="feed-list">
             {posts.map((p) => (
-              <PostCard key={p._id} post={p} isAdmin={isAdmin} onDeleteLocal={removePostLocal} />
+              <PostCard
+                key={p._id}
+                post={p}
+                isAdmin={isAdmin}
+                onDeleteLocal={removePostLocal}
+              />
             ))}
           </div>
         )}
@@ -96,5 +102,3 @@ const NewsFeed = () => {
 };
 
 export default NewsFeed;
-
-
