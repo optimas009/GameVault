@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import { API_BASE_URL } from "../../services/AuthFetch";
+
 import "../../css/Signup-Login.css";
 
 

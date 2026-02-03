@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 
 import AuthFetch from "../../services/AuthFetch";
 
+import { API_BASE_URL } from "../../services/AuthFetch";
+
 import "../../css/Signup-Login.css";
 
 // NO capitals + basic valid email format
