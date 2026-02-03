@@ -14,6 +14,12 @@ const isYoutubeUrl = (url) => {
   return !!MediaUtil.getYoutubeId(s);
 };
 
+const guessKindFromUrl = (u) => {
+  const s = String(u || "").toLowerCase().split("?")[0];
+  const videoExts = [".mp4", ".webm", ".ogg", ".mov", ".mkv"];
+  return videoExts.some((ext) => s.endsWith(ext)) ? "video" : "image";
+};
+
 const CreatePost = () => {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
@@ -22,11 +28,11 @@ const CreatePost = () => {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // uploaded media: [{ path: "/uploads/xxx.png", kind: "image"|"video" }]
+  // Cloudinary media: [{ url: "https://res.cloudinary.com/..", kind: "image"|"video" }]
   const [media, setMedia] = useState([]);
 
-  // track uploads done in this screen (so we can delete if not posted)
-  const [newUploads, setNewUploads] = useState([]); // ["/uploads/..."]
+  // Track uploads done in this screen (so we can delete if not posted)
+  const [newUploads, setNewUploads] = useState([]); 
   const [posted, setPosted] = useState(false);
 
   // youtube urls array (inputs)
@@ -34,7 +40,7 @@ const CreatePost = () => {
 
   const fileInputRef = useRef(null);
 
-  // IMPORTANT: refs so cleanup only happens on UNMOUNT (not when newUploads changes)
+  // IMPORTANT: refs so cleanup only happens on UNMOUNT
   const newUploadsRef = useRef([]);
   const postedRef = useRef(false);
 
@@ -42,7 +48,7 @@ const CreatePost = () => {
     if (!token) navigate("/login", { replace: true });
   }, [token, navigate]);
 
-  // keep refs updated
+  
   useEffect(() => {
     newUploadsRef.current = newUploads;
   }, [newUploads]);
@@ -51,17 +57,15 @@ const CreatePost = () => {
     postedRef.current = posted;
   }, [posted]);
 
-  // cleanup ONLY on unmount (leave page) if not posted
+  
   useEffect(() => {
     return () => {
       if (postedRef.current) return;
 
-      const paths = (newUploadsRef.current || []).filter((p) =>
-        MediaUtil.isUploadsPath(p)
-      );
-      if (!paths.length) return;
+      const urls = (newUploadsRef.current || []).filter(Boolean);
+      if (!urls.length) return;
 
-      Promise.allSettled(paths.map((p) => DeleteUpload(p)));
+      Promise.allSettled(urls.map((u) => DeleteUpload(u)));
     };
   }, []);
 
@@ -69,26 +73,25 @@ const CreatePost = () => {
 
   const removeMediaAt = async (idx) => {
     const target = media[idx];
-    const p = target?.path;
+    const u = String(target?.url || "").trim();
+    if (!u) return;
 
-    // delete only that one file
-    if (p && MediaUtil.isUploadsPath(p)) {
+   
+    if (newUploads.includes(u)) {
       try {
-        await DeleteUpload(p);
+        await DeleteUpload(u);
       } catch {}
-      setNewUploads((prev) => prev.filter((x) => x !== p));
+      setNewUploads((prev) => prev.filter((x) => x !== u));
     }
 
     setMedia((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const clearAllMedia = async () => {
-    const paths = media
-      .map((m) => m?.path)
-      .filter((p) => p && MediaUtil.isUploadsPath(p));
-
+    
+    const urls = newUploads.filter(Boolean);
     try {
-      await Promise.allSettled(paths.map((p) => DeleteUpload(p)));
+      await Promise.allSettled(urls.map((u) => DeleteUpload(u)));
     } catch {}
 
     setMedia([]);
@@ -115,18 +118,22 @@ const CreatePost = () => {
       const uploaded = [];
 
       for (const f of files) {
-        const data = await UploadFile(f); // default posts upload route
-        const kind = String(f.type || "").startsWith("video/") ? "video" : "image";
-        if (data?.path) uploaded.push({ path: data.path, kind });
+        const data = await UploadFile(f); // upload route
+        const url = String(data?.url || "").trim();
+        if (!url) continue;
+
+        const kind = String(f.type || "").startsWith("video/")
+          ? "video"
+          : guessKindFromUrl(url);
+
+        uploaded.push({ url, kind });
       }
 
-      const valid = uploaded.filter(
-        (x) => x.path && MediaUtil.isUploadsPath(x.path)
-      );
+      if (!uploaded.length) throw new Error("Upload failed (no url returned)");
 
       // track for cleanup if not posted
-      setNewUploads((prev) => [...prev, ...valid.map((x) => x.path)]);
-      setMedia((prev) => [...prev, ...valid]);
+      setNewUploads((prev) => [...prev, ...uploaded.map((x) => x.url)]);
+      setMedia((prev) => [...prev, ...uploaded]);
     } catch (ex) {
       setErr(ex?.message || "Upload failed");
     } finally {
@@ -136,9 +143,9 @@ const CreatePost = () => {
 
   const backToFeed = async () => {
     // delete all temp uploads before leaving
-    const paths = newUploads.filter((p) => MediaUtil.isUploadsPath(p));
+    const urls = newUploads.filter(Boolean);
     try {
-      await Promise.allSettled(paths.map((p) => DeleteUpload(p)));
+      await Promise.allSettled(urls.map((u) => DeleteUpload(u)));
     } catch {}
 
     setNewUploads([]);
@@ -169,15 +176,17 @@ const CreatePost = () => {
 
     setLoading(true);
     try {
+      const mediaUrls = media.map((m) => String(m.url || "").trim()).filter(Boolean);
+
       const payload = {
         text: t,
-        media: media.map((m) => m.path), // array of /uploads/...
+        media: mediaUrls, // array of cloudinary URLs
         youtubeUrls: ytClean,
       };
 
-      const firstImage = media.find((m) => m.kind === "image")?.path || "";
-      const firstVideo = media.find((m) => m.kind === "video")?.path || "";
-
+      
+      const firstImage = media.find((m) => m.kind === "image")?.url || "";
+      const firstVideo = media.find((m) => m.kind === "video")?.url || "";
       payload.imageUrl = firstImage;
       payload.videoUrl = firstVideo;
 
@@ -195,7 +204,7 @@ const CreatePost = () => {
         return;
       }
 
-      // now linked to DB -> do NOT cleanup on unmount
+      
       setPosted(true);
       setNewUploads([]);
 
@@ -230,7 +239,6 @@ const CreatePost = () => {
             disabled={loading}
           />
 
-          {/* UPLOAD BUTTON FOR IMAGE/VIDEO (multiple) */}
           <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
             <button
               className="btn btn--secondary"
@@ -262,7 +270,6 @@ const CreatePost = () => {
             onChange={onFilesSelected}
           />
 
-          {/* MEDIA PREVIEW GRID */}
           {media.length > 0 && (
             <div
               className="preview-wrap"
@@ -274,7 +281,7 @@ const CreatePost = () => {
               }}
             >
               {media.map((m, idx) => (
-                <div key={`${m.path}-${idx}`} style={{ position: "relative" }}>
+                <div key={`${m.url}-${idx}`} style={{ position: "relative" }}>
                   <button
                     type="button"
                     className="btn btn--ghost btn--danger"
@@ -287,24 +294,16 @@ const CreatePost = () => {
 
                   {m.kind === "video" ? (
                     <video className="preview-video" controls>
-                      <source
-                        src={MediaUtil.toAbsoluteMediaUrl(m.path)}
-                        type="video/mp4"
-                      />
+                      <source src={m.url} type="video/mp4" />
                     </video>
                   ) : (
-                    <img
-                      className="preview-img"
-                      src={MediaUtil.toAbsoluteMediaUrl(m.path)}
-                      alt="preview"
-                    />
+                    <img className="preview-img" src={m.url} alt="preview" />
                   )}
                 </div>
               ))}
             </div>
           )}
 
-          {/* YOUTUBE URLS ONLY */}
           <div style={{ marginTop: 18 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div style={{ fontWeight: 700 }}>YouTube Links (URL ONLY)</div>

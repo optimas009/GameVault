@@ -17,7 +17,7 @@ const UploadFile = async (file, endpoint = "/upload") => {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || "Upload failed");
 
-  return data; // { url, path }
+  return data; // { url}
 };
 
 export default UploadFile;

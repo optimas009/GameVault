@@ -12,8 +12,8 @@ const isYoutubeUrl = (url) => {
   return !!MediaUtil.getYoutubeId(s);
 };
 
-const guessKindFromPath = (p) => {
-  const s = String(p || "").toLowerCase();
+const guessKindFromUrl = (u) => {
+  const s = String(u || "").toLowerCase().split("?")[0];
   const videoExts = [".mp4", ".webm", ".ogg", ".mov", ".mkv"];
   return videoExts.some((ext) => s.endsWith(ext)) ? "video" : "image";
 };
@@ -31,48 +31,38 @@ const PostBody = ({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  const [media, setMedia] = useState([]); // [{path, kind}]
+  const [media, setMedia] = useState([]); // [{url, kind}]
   const [youtubeUrls, setYoutubeUrls] = useState([""]);
 
-  // track uploads made while editing 
+  // track uploads made while editing (URLs)
   const [newUploads, setNewUploads] = useState([]);
 
   // snapshot to restore on cancel
-  const [initialSnap, setInitialSnap] = useState({ text: "", media: [], youtubeUrls: [""] });
+  const [initialSnap, setInitialSnap] = useState({
+    text: "",
+    media: [],
+    youtubeUrls: [""],
+  });
 
   const fileInputRef = useRef(null);
 
   useEffect(() => {
     setText(post?.text || "");
 
-    // load media from db
-    const fromArray = Array.isArray(post?.media) ? post.media : null;
+    const fromArray = Array.isArray(post?.media) ? post.media : [];
+    const loadedMedia = fromArray
+      .map((u) => String(u || "").trim())
+      .filter(Boolean)
+      .map((u) => ({ url: u, kind: guessKindFromUrl(u) }));
 
-    let loadedMedia = [];
-    if (fromArray && fromArray.length) {
-      loadedMedia = fromArray
-        .map((p) => String(p || "").trim())
-        .filter((p) => p && MediaUtil.isAllowedMediaUrl(p))
-        .map((p) => ({
-          path: p,
-          kind: MediaUtil.isUploadsPath(p) ? guessKindFromPath(p) : "image",
-        }));
-    } else {
-      const img = String(post?.imageUrl || "").trim();
-      const vid = String(post?.videoUrl || "").trim();
-      if (img) loadedMedia.push({ path: img, kind: "image" });
-      if (vid) loadedMedia.push({ path: vid, kind: "video" });
-    }
     setMedia(loadedMedia);
 
     const ytArr = Array.isArray(post?.youtubeUrls) ? post.youtubeUrls : [];
     const loadedYt = ytArr.length ? ytArr.map((x) => String(x || "")) : [""];
     setYoutubeUrls(loadedYt);
 
-    // reset tracking whenever post changes
     setNewUploads([]);
 
-    // snapshot for cancel restore
     setInitialSnap({
       text: post?.text || "",
       media: loadedMedia,
@@ -83,30 +73,32 @@ const PostBody = ({
   const pickFiles = () => fileInputRef.current?.click();
 
   const addYoutubeField = () => setYoutubeUrls((prev) => [...prev, ""]);
-  const removeYoutubeField = (idx) => setYoutubeUrls((prev) => prev.filter((_, i) => i !== idx));
-  const updateYoutubeField = (idx, value) => setYoutubeUrls((prev) => prev.map((v, i) => (i === idx ? value : v)));
+  const removeYoutubeField = (idx) =>
+    setYoutubeUrls((prev) => prev.filter((_, i) => i !== idx));
+  const updateYoutubeField = (idx, value) =>
+    setYoutubeUrls((prev) => prev.map((v, i) => (i === idx ? value : v)));
 
   const removeMediaAt = async (idx) => {
     const target = media[idx];
-    const p = String(target?.path || "").trim();
+    const u = String(target?.url || "").trim();
+    if (!u) return;
 
-    // only delete immediately if it was uploaded during this edit session
-    if (p && newUploads.includes(p) && MediaUtil.isUploadsPath(p)) {
+    
+    if (newUploads.includes(u)) {
       try {
-        await DeleteUpload(p);
+        await DeleteUpload(u);
       } catch {}
-      setNewUploads((prev) => prev.filter((x) => x !== p));
+      setNewUploads((prev) => prev.filter((x) => x !== u));
     }
 
     setMedia((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const clearAllMedia = async () => {
-
-    // delete only newly uploaded ones (not old DB ones)
-    const paths = newUploads.filter((p) => MediaUtil.isUploadsPath(p));
+    
+    const urls = newUploads.filter(Boolean);
     try {
-      await Promise.allSettled(paths.map((p) => DeleteUpload(p)));
+      await Promise.allSettled(urls.map((u) => DeleteUpload(u)));
     } catch {}
     setNewUploads([]);
     setMedia([]); // UI cleared, DB deletions happen after save
@@ -122,16 +114,23 @@ const PostBody = ({
 
     try {
       const uploaded = [];
+
       for (const f of files) {
         const data = await UploadFile(f);
-        const kind = String(f.type || "").startsWith("video/") ? "video" : "image";
-        if (data?.path) uploaded.push({ path: data.path, kind });
+        const url = String(data?.url || "").trim();
+        if (!url) continue;
+
+        const kind = String(f.type || "").startsWith("video/")
+          ? "video"
+          : guessKindFromUrl(url);
+
+        uploaded.push({ url, kind });
       }
 
-      const valid = uploaded.filter((x) => x.path && MediaUtil.isUploadsPath(x.path));
+      if (!uploaded.length) throw new Error("Upload failed (no url returned)");
 
-      setNewUploads((prev) => [...prev, ...valid.map((x) => x.path)]);
-      setMedia((prev) => [...prev, ...valid]);
+      setNewUploads((prev) => [...prev, ...uploaded.map((x) => x.url)]);
+      setMedia((prev) => [...prev, ...uploaded]);
     } catch (ex) {
       setErr(ex?.message || "Upload failed");
     } finally {
@@ -140,15 +139,15 @@ const PostBody = ({
   };
 
   const cancelEdit = async () => {
-    // delete any uploads made during edit session
-    const paths = newUploads.filter((p) => MediaUtil.isUploadsPath(p));
+    
+    const urls = newUploads.filter(Boolean);
     try {
-      await Promise.allSettled(paths.map((p) => DeleteUpload(p)));
+      await Promise.allSettled(urls.map((u) => DeleteUpload(u)));
     } catch {}
 
     setNewUploads([]);
 
-    // restore snapshot
+   
     setText(initialSnap.text);
     setMedia(initialSnap.media);
     setYoutubeUrls(initialSnap.youtubeUrls);
@@ -164,25 +163,17 @@ const PostBody = ({
 
     const t = String(text || "").trim();
 
-    const mediaPaths = media
-      .map((m) => String(m?.path || "").trim())
-      .filter(Boolean);
+    const mediaUrls = media.map((m) => String(m?.url || "").trim()).filter(Boolean);
+    const ytClean = youtubeUrls.map((u) => String(u || "").trim()).filter(Boolean);
 
-    const ytClean = youtubeUrls
-      .map((u) => String(u || "").trim())
-      .filter(Boolean);
-
-    if (!t && mediaPaths.length === 0 && ytClean.length === 0) {
+    if (!t && mediaUrls.length === 0 && ytClean.length === 0) {
       return setErr("Post cannot be empty (text / uploads / youtube).");
     }
 
-    for (const p of mediaPaths) {
-      if (!MediaUtil.isAllowedMediaUrl(p)) {
-        return setErr("Invalid media URL detected. Use /uploads/... or http/https.");
-      }
-      if (MediaUtil.isHttpUrl(p)) {
-        const ok = MediaUtil.isMp4Url(p) || !!MediaUtil.getYoutubeId(p);
-        if (!ok) return setErr("External video must be an .mp4 link or a YouTube link.");
+    // Validate media URLs (cloudinary only)
+    for (const u of mediaUrls) {
+      if (!MediaUtil.isAllowedMediaUrl(u)) {
+        return setErr("Invalid media URL detected.");
       }
     }
 
@@ -192,8 +183,8 @@ const PostBody = ({
       }
     }
 
-    const firstImage = media.find((m) => m.kind === "image")?.path || "";
-    const firstVideo = media.find((m) => m.kind === "video")?.path || "";
+    const firstImage = media.find((m) => m.kind === "image")?.url || "";
+    const firstVideo = media.find((m) => m.kind === "video")?.url || "";
 
     setSaving(true);
     try {
@@ -202,7 +193,7 @@ const PostBody = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: t,
-          media: mediaPaths,
+          media: mediaUrls,
           youtubeUrls: ytClean,
           imageUrl: firstImage,
           videoUrl: firstVideo,
@@ -223,6 +214,7 @@ const PostBody = ({
     }
   };
 
+  // ===================== EDIT MODE =====================
   if (editingPost) {
     return (
       <div style={{ marginTop: 10 }}>
@@ -266,7 +258,7 @@ const PostBody = ({
             }}
           >
             {media.map((m, idx) => (
-              <div key={`${m.path}-${idx}`} style={{ position: "relative" }}>
+              <div key={`${m.url}-${idx}`} style={{ position: "relative" }}>
                 <button
                   className="btn btn--ghost btn--danger"
                   type="button"
@@ -279,10 +271,10 @@ const PostBody = ({
 
                 {m.kind === "video" ? (
                   <video className="preview-video" controls>
-                    <source src={MediaUtil.toAbsoluteMediaUrl(m.path)} type="video/mp4" />
+                    <source src={m.url} type="video/mp4" />
                   </video>
                 ) : (
-                  <img className="preview-img" src={MediaUtil.toAbsoluteMediaUrl(m.path)} alt="preview" />
+                  <img className="preview-img" src={m.url} alt="preview" />
                 )}
               </div>
             ))}
@@ -310,7 +302,12 @@ const PostBody = ({
                 />
 
                 {youtubeUrls.length > 1 && (
-                  <button className="btn btn--ghost btn--danger" type="button" onClick={() => removeYoutubeField(idx)} disabled={saving}>
+                  <button
+                    className="btn btn--ghost btn--danger"
+                    type="button"
+                    onClick={() => removeYoutubeField(idx)}
+                    disabled={saving}
+                  >
                     X
                   </button>
                 )}
@@ -334,7 +331,7 @@ const PostBody = ({
     );
   }
 
-  
+  // ===================== VIEW MODE =====================
   const normalized = NormalizePostMedia(post);
   const viewMedia = normalized.media;
   const viewYoutubeUrls = normalized.youtubeUrls;
@@ -349,7 +346,7 @@ const PostBody = ({
       {post?.text && <div className="post-text">{post.text}</div>}
 
       {viewMedia.map((u, idx) => {
-        const abs = MediaUtil.toAbsoluteMediaUrl(u);
+        const abs = MediaUtil.toAbsoluteMediaUrl(u); // should just return u for cloudinary
         const isVid = isVideoUrl(u);
 
         return (

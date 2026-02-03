@@ -1,6 +1,7 @@
 import "./App.css";
 import { Route, Routes, Navigate, useNavigate } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+
 
 // layout
 import Nav from "./pages/layout/Nav";
@@ -43,8 +44,15 @@ import UpdateGame from "./pages/admin/UpdateGame";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import SecretAdminLogin from "./pages/admin/SecretAdminLogin";
 
+
+//ai
+import AiChat from "./pages/ai/AiChat";
+
+
+
 function App() {
   const navigate = useNavigate();
+  const [aiOpen, setAiOpen] = useState(false);
 
   useEffect(() => {
     const handleSessionExpired = () => {
@@ -65,6 +73,9 @@ function App() {
       <div className="app-content">
         <Routes>
           <Route path="/" element={<Navigate to="/home" replace />} />
+
+
+
 
           <Route path="/home" element={<Home />} />
           <Route path="/game/:id" element={<GameDetails />} />
@@ -101,6 +112,18 @@ function App() {
           </Route>
         </Routes>
       </div>
+
+      {/* ADD HERE */}
+      {!aiOpen && (
+        <button className="ai-fab" onClick={() => setAiOpen(true)}>
+          <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ fontSize: "18px" }}>🤖</span>
+            <span style={{ fontSize: "11px", fontWeight: 600, lineHeight: 1 }}>
+              Need AI<br />Assistant?
+            </span>
+          </span>
+        </button>)}
+      <AiChat open={aiOpen} onClose={() => setAiOpen(false)} />
 
       <Footer />
     </div>

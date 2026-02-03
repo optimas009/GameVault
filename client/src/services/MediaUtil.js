@@ -1,26 +1,18 @@
-const SERVER_BASE_URL = "http://localhost:5000";
+const SERVER_BASE_URL =
+  process.env.REACT_APP_SERVER_BASE_URL || "http://localhost:5000";
 
 const isHttpUrl = (url) => /^https?:\/\/.+/i.test(String(url || "").trim());
 const isUploadsPath = (url) => String(url || "").trim().startsWith("/uploads/");
 
-// matches backend isAllowedMediaUrl()
 // allow:
 // 1) "/uploads/..."
-// 2) "http(s)://.../uploads/..."
+// 2) any absolute http(s) URL (Cloudinary, YouTube, etc.)
 const isAllowedMediaUrl = (url) => {
   const s = String(url || "").trim();
   if (!s) return true;
 
   if (isUploadsPath(s)) return true;
-
-  if (isHttpUrl(s)) {
-    try {
-      const pathname = new URL(s).pathname;
-      return pathname && pathname.startsWith("/uploads/");
-    } catch {
-      return false;
-    }
-  }
+  if (isHttpUrl(s)) return true;
 
   return false;
 };
@@ -29,10 +21,10 @@ const toAbsoluteMediaUrl = (url) => {
   const s = String(url || "").trim();
   if (!s) return "";
 
-  // if user stored "/uploads/..." -> convert to full URL for <img src="">
+  // if stored "/uploads/..." -> convert to full URL
   if (isUploadsPath(s)) return `${SERVER_BASE_URL}${s}`;
 
-  // already full url (could be /uploads/ on another host)
+  // already absolute URL (Cloudinary / YouTube / etc.)
   return s;
 };
 
@@ -57,7 +49,7 @@ const toYoutubeEmbed = (url) => {
   return id ? `https://www.youtube.com/embed/${id}` : null;
 };
 
-// mp4 check only for external urls; uploads any video type
+// mp4 check only for external urls
 const isMp4Url = (url) => /\.mp4(\?.*)?$/i.test(String(url || "").trim());
 
 const MediaUtil = {

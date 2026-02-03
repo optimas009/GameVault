@@ -6,7 +6,6 @@ import UploadFile from "../../services/UploadFile";
 import MediaUtil from "../../services/MediaUtil";
 import DeleteUpload from "../../services/DeleteUpload";
 
-
 import "../../css/Form.css";
 
 const AddGame = () => {
@@ -41,15 +40,18 @@ const AddGame = () => {
     rec_storage: "",
   });
 
-  //media state 
+  // URLs stored in DB
   const [coverMedia, setCoverMedia] = useState("");
   const [screenshots, setScreenshots] = useState([]);
 
-  //uploading state
+  // track ONLY uploads created on this page (so we can delete on cancel / remove)
+  const [newUploads, setNewUploads] = useState([]); // [url,url...]
+
+  // uploading state
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingShots, setUploadingShots] = useState(false);
 
-  //popup state
+  // popup state
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState(""); // success | error
   const [nextRoute, setNextRoute] = useState("");
@@ -82,7 +84,9 @@ const AddGame = () => {
       .map((x) => x.trim())
       .filter(Boolean);
 
-  //Cover upload
+  const isNewUpload = (url) => newUploads.includes(url);
+
+  // Cover upload (replace deletes previous unsaved cover)
   const handleCoverFile = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -90,10 +94,20 @@ const AddGame = () => {
 
     try {
       setUploadingCover(true);
-      const data = await UploadFile(file, "/admin/upload-game?type=cover");
 
-      if (!data?.path) throw new Error("Upload failed");
-      setCoverMedia(data.path); // store "/uploads/..."
+      const data = await UploadFile(file, "/admin/upload-game?type=cover");
+      if (!data?.url) throw new Error("Upload failed");
+
+      // if there is an unsaved cover from this page, delete it (replace)
+      if (coverMedia && isNewUpload(coverMedia)) {
+        try {
+          await DeleteUpload(coverMedia); // DeleteUpload accepts URL or publicId
+        } catch {}
+        setNewUploads((prev) => prev.filter((x) => x !== coverMedia));
+      }
+
+      setCoverMedia(data.url);
+      setNewUploads((prev) => [...prev, data.url]);
     } catch (err) {
       openPopup("error", err.message || "Cover upload failed");
     } finally {
@@ -105,19 +119,19 @@ const AddGame = () => {
   const handleScreenshotsFiles = async (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
-    if (files.length === 0) return;
+    if (!files.length) return;
 
     try {
       setUploadingShots(true);
+
       const uploaded = await Promise.all(
         files.map((f) => UploadFile(f, "/admin/upload-game?type=screenshot"))
       );
-      const paths = uploaded.map((u) => u?.path).filter(Boolean);
 
-      setScreenshots((prev) => {
-        const merged = [...prev, ...paths];
-        return Array.from(new Set(merged));
-      });
+      const urls = uploaded.map((u) => u?.url).filter(Boolean);
+
+      setScreenshots((prev) => Array.from(new Set([...prev, ...urls])));
+      setNewUploads((prev) => Array.from(new Set([...prev, ...urls])));
     } catch (err) {
       openPopup("error", err.message || "Screenshots upload failed");
     } finally {
@@ -125,11 +139,33 @@ const AddGame = () => {
     }
   };
 
-  const removeScreenshot = async (p) => {
-    try {
-      await DeleteUpload(p);
-    } catch { }
-    setScreenshots((prev) => prev.filter((x) => x !== p));
+  // Remove cover (delete immediately because it's unsaved)
+  const removeCover = async () => {
+    const url = coverMedia;
+    if (!url) return;
+
+    if (isNewUpload(url)) {
+      try {
+        await DeleteUpload(url);
+      } catch {}
+      setNewUploads((prev) => prev.filter((x) => x !== url));
+    }
+
+    setCoverMedia("");
+  };
+
+  // Remove ONE screenshot (delete immediately if it was uploaded on this page)
+  const removeScreenshot = async (url) => {
+    if (!url) return;
+
+    if (isNewUpload(url)) {
+      try {
+        await DeleteUpload(url);
+      } catch {}
+      setNewUploads((prev) => prev.filter((x) => x !== url));
+    }
+
+    setScreenshots((prev) => prev.filter((x) => x !== url));
   };
 
   const handleSubmit = async (e) => {
@@ -154,10 +190,8 @@ const AddGame = () => {
       genre: form.genre,
       description: form.description,
 
-
       coverMedia,
       screenshots,
-
 
       trailerUrl: form.trailerUrl,
       modes: toCommaArray(form.modesText),
@@ -211,10 +245,25 @@ const AddGame = () => {
         return;
       }
 
+      // saved -> do NOT cleanup uploads
+      setNewUploads([]);
       openPopup("success", "Game added!", "/update");
     } catch {
       openPopup("error", "Something went wrong. Please try again.");
     }
+  };
+
+  // Cancel: delete ALL uploads created on this page (since not saved)
+  const onCancel = async () => {
+    try {
+      await Promise.allSettled(newUploads.map((u) => DeleteUpload(u)));
+    } catch {}
+
+    setNewUploads([]);
+    setCoverMedia("");
+    setScreenshots([]);
+
+    navigate("/update");
   };
 
   return (
@@ -302,7 +351,7 @@ const AddGame = () => {
               />
             </div>
 
-            {/*COVER UPLOAD*/}
+            {/* COVER UPLOAD */}
             <div className="admin-field admin-span-2">
               <label className="admin-label">
                 Cover Image (Upload) {uploadingCover ? "— Uploading..." : ""}
@@ -314,6 +363,7 @@ const AddGame = () => {
                 onChange={handleCoverFile}
                 disabled={uploadingCover}
               />
+
               {coverMedia ? (
                 <div style={{ marginTop: 8 }}>
                   <img
@@ -325,12 +375,7 @@ const AddGame = () => {
                     <button
                       type="button"
                       className="admin-btn secondary"
-                      onClick={async () => {
-                        try {
-                          await DeleteUpload(coverMedia);
-                        } catch { }
-                        setCoverMedia("");
-                      }}
+                      onClick={removeCover}
                     >
                       Remove Cover
                     </button>
@@ -354,7 +399,8 @@ const AddGame = () => {
             {/* Screenshots upload */}
             <div className="admin-field admin-span-2">
               <label className="admin-label">
-                Screenshots (Upload multiple) {uploadingShots ? "— Uploading..." : ""}
+                Screenshots (Upload multiple){" "}
+                {uploadingShots ? "— Uploading..." : ""}
               </label>
               <input
                 className="admin-input"
@@ -367,10 +413,10 @@ const AddGame = () => {
 
               {screenshots.length > 0 ? (
                 <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  {screenshots.map((p) => (
-                    <div key={p} style={{ width: 140 }}>
+                  {screenshots.map((u) => (
+                    <div key={u} style={{ width: 140 }}>
                       <img
-                        src={MediaUtil.toAbsoluteMediaUrl(p)}
+                        src={MediaUtil.toAbsoluteMediaUrl(u)}
                         alt="screenshot"
                         style={{ width: "100%", borderRadius: 8 }}
                       />
@@ -378,7 +424,7 @@ const AddGame = () => {
                         type="button"
                         className="admin-btn secondary"
                         style={{ marginTop: 6, width: "100%" }}
-                        onClick={() => removeScreenshot(p)}
+                        onClick={() => removeScreenshot(u)}
                       >
                         Remove
                       </button>
@@ -487,19 +533,7 @@ const AddGame = () => {
               Add Game
             </button>
 
-            <button
-              className="admin-btn secondary"
-              type="button"
-              onClick={async () => {
-                try {
-                  await Promise.all([
-                    coverMedia ? DeleteUpload(coverMedia) : Promise.resolve(),
-                    ...screenshots.map((p) => DeleteUpload(p)),
-                  ]);
-                } catch { }
-                navigate("/update");
-              }}
-            >
+            <button className="admin-btn secondary" type="button" onClick={onCancel}>
               Cancel
             </button>
           </div>

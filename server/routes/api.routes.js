@@ -5,6 +5,10 @@ const { upload } = require("../helpers/upload.helper"); // posts/default
 const { uploadGames } = require("../helpers/uploadGames.helper");
 const { requireAdmin ,blockAdminPurchase} = require("../helpers/admin.middleware");
 
+//ai
+const aiController = require("../controllers/ai.controller");
+router.post("/ai/chat", aiController.chat);
+
 
 const { uploadSingle, deleteUpload } = require("../controllers/upload.controller");
 const authController = require("../controllers/auth.controller");
