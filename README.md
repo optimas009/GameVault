@@ -11,7 +11,7 @@ It features a **social newsfeed**, **media uploads**, **reactions**, **commentin
 ---
 
 ## 🎥 Video Demonstration
-Watch the full demo here:  
+Watch demo here:  
 👉 **[Click to View](https://drive.google.com/drive/folders/1YlwzBJyO-U8C28E3TtsxlKjnicEOvQkM?usp=sharing)**
 
 ---
@@ -31,13 +31,13 @@ Watch the full demo here:
 
 | Layer          | Technology |
 |----------------|------------|
-| Frontend       | React.js, CSS |
-| Backend        | Node.js, Express.js |
-| Database       | MongoDB |
+| Frontend       | React.js, CSS  : Vercel |
+| Backend        | Node.js, Express.js : Render |
+| Database       | MongoDB Atlas|
 | Authentication | JWT (JSON Web Tokens) |
 | Security       | bcrypt.js |
-| File Uploads   | Multer |
-| Email Services | Nodemailer |
+| File Uploads   | Multer , storage : cloudinary |
+| Email Services | Nodemailer , Brevo api|
 | Access Control | Role-Based Access Control (RBAC) |
 
 ---
@@ -50,6 +50,7 @@ Watch the full demo here:
 - Post reactions
 - Media previews before posting
 - Admin moderation (delete posts & comments)
+- Free ai assistant (Groq api)
 
 ---
 
@@ -108,7 +109,6 @@ GameVault/
 │   ├── models/             # MongoDB models
 │   ├── routes/             # API routes
 │   ├── services/           # Business logic
-│   ├── uploads/            # Media uploads (images/videos)
 │   └── server.js           # Server entry point
 ├── screenshots/            # Project screenshots
 └── .gitignore
@@ -148,11 +148,16 @@ GameVault/
 
 ### 4️⃣ Environment Variables
 - Create a `.env` file inside the `server` folder
-- Configure JWT, email, and application base URL variables
+- Configure variables
   - `JWT_SECRET=change_me`
-  - `EMAIL_USER=change_me`
-  - `EMAIL_PASS=change_me`
-  - `APP_BASE_URL=http://localhost:5000`
+  - `CLIENT_URL=change_me`
+  - `APP_BASE_URL=change_me`
+  - `CLOUDINARY_CLOUD_NAME=change_me`
+  - `CLOUDINARY_API_KEY=change_me`
+  - `CLOUDINARY_API_SECRET=change_me`
+  - `MONGODB_URI=change_me`
+  - `BREVO_API_KEY=change_me`
+  - `EMAIL_FROM=change_me`
 
 ---
 
