@@ -55,7 +55,7 @@ const Nav = () => {
       <div className="nav-left">
         {/* Logo now clickable -> /home */}
         <NavLink to="/home" className="nav-logo" onClick={closeMobile}>
-          🎮 GameShop
+          🎮 GameVault
         </NavLink>
 
         {/* Desktop links */}
